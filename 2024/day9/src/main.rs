@@ -27,6 +27,13 @@ impl Block {
             Block::Free => '.',
         }
     }
+
+    pub fn id(&self) -> usize {
+        match self {
+            Block::File { id } => *id,
+            Block::Free => 0,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -152,21 +159,21 @@ impl From<Part1> for Part2 {
 }
 
 impl Part2 {
-    fn unsorted(&self) -> Option<Vec<(usize, Group)>> {
+    fn unsorted(&self, lim: usize) -> Option<usize> {
         self.groups.iter()
-            .position(|group| group.block.is_free())
-            .map(|offset| {
-                self.groups[offset..].iter()
-                    .enumerate()
-                    .filter_map(|(index, group)| group.block.is_file().then(|| (index + offset, group.clone())))
-                    .collect::<Vec<(usize, Group)>>()
-            })
+            .enumerate()
+            .rev()
+            .skip_while(|(index, group)| group.block.is_free() || *index < lim)
+            .next()
+            .map(|(index, _)| index)
     }
 
-    fn free(&self) -> usize {
+    fn free(&self, size: usize, unsorted: usize) -> Option<usize> {
         self.groups.iter()
-            .position(|group| group.block.is_free())
-            .unwrap_or(0)
+            .enumerate()
+            .skip_while(|(index, group)| group.block.is_file() || *index > unsorted || group.size < size)
+            .next()
+            .map(|(index, _)| index)
     }
 
     fn draw(&self) {
@@ -178,30 +185,85 @@ impl Part2 {
 
 impl Partition for Part2 {
     fn sort(&mut self) {
-        'outer: while let Some(unsorted) = self.unsorted() {
+        let mut lim = self.groups.len() - 1;
+
+        while let Some(unsorted) = self.unsorted(lim) {
+            println!("lim: {}, unsorted: {}", lim, unsorted);
+
             self.draw();
 
-            let free = self.free();
+            match self.free(self.groups[unsorted].size, lim) {
+                Some(free) => {
+                    println!("free: {}", free);
 
-            for (index, group) in unsorted.iter().rev() {
-                if self.groups[free].size == group.size {
-                    self.groups.swap(free, *index);
+                    self.groups.swap(free, unsorted);
 
-                    continue 'outer;
-                } else if self.groups[free].size > group.size {
-                    self.groups.remove(free);
+                    self.draw();
 
-                    // TODO: FINISH THIS PART
-                    self.groups.insert(free, group.clone());
+                    let free_group = self.groups[unsorted].clone();
+                    let unsorted_group = self.groups[free].clone();
 
-                    continue 'outer;
+                    // this is actually checking free > unsorted, but we swapped it
+                    if free_group.size > unsorted_group.size {
+                        self.groups.insert(free + 1, Group::new(Block::Free, free_group.size - unsorted_group.size));
+
+                        if let Some(g) = self.groups.get_mut(unsorted + 1) {
+                            g.size -= free_group.size - unsorted_group.size;
+                        }
+                    }
+
+                    self.draw();
+
+                    lim = self.groups.len() - 1;
+                },
+                None => lim -= 1,
+            }
+        }
+
+
+        println!("done: {}", lim);
+
+        /*
+        'outer: while let Some(mut unsorted) = self.unsorted() {
+            let hash = self.map()
+                .iter()
+                .enumerate()
+                .fold(0, |acc, (index, block)| {
+                    match block {
+                        Block::File { id } => acc + (*id * index),
+                        Block::Free => acc,
+                    }
+                });
+
+            println!("hash: {}", hash);
+
+            unsorted.sort_by(|(_, a), (_, b)| b.block.id().cmp(&a.block.id()));
+
+            for (unsorted_index, unsorted_group) in unsorted {
+                // TODO: we will have to not recalculate free everytime, its better to just remove
+                // from free when we find
+                for (free_index, free_group) in self.free(unsorted_index) {
+                    if free_group.size == unsorted_group.size {
+                        self.groups.swap(free_index, unsorted_index);
+
+                        continue 'outer;
+                    } else if free_group.size > unsorted_group.size {
+                        self.groups.swap(free_index, unsorted_index);
+
+                        self.groups.insert(free_index + 1, Group::new(Block::Free, free_group.size - unsorted_group.size));
+
+                        if let Some(g) = self.groups.get_mut(unsorted_index + 1) {
+                            g.size -= free_group.size - unsorted_group.size;
+                        }
+
+                        continue 'outer;
+                    }
                 }
             }
 
             break 'outer;
         }
-
-        self.draw();
+        */
     }
 
     fn map(&self) -> Vec<Block> {
@@ -215,7 +277,7 @@ impl Partition for Part2 {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut part1 = Part1::new("test.txt")?;
 
-    println!("part1: {:?}", part1.calculate());
+    // println!("part1: {:?}", part1.calculate());
 
     let mut part2 = Part2::from(part1);
 
