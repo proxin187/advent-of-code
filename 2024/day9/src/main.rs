@@ -160,18 +160,18 @@ impl From<Part1> for Part2 {
 
 impl Part2 {
     fn unsorted(&self, lim: usize) -> Option<usize> {
-        self.groups.iter()
+        self.groups[..=lim].iter()
             .enumerate()
             .rev()
-            .skip_while(|(index, group)| group.block.is_free() || *index < lim)
+            .skip_while(|(_, group)| group.block.is_free())
             .next()
             .map(|(index, _)| index)
     }
 
     fn free(&self, size: usize, unsorted: usize) -> Option<usize> {
-        self.groups.iter()
+        self.groups[..unsorted].iter()
             .enumerate()
-            .skip_while(|(index, group)| group.block.is_file() || *index > unsorted || group.size < size)
+            .skip_while(|(_, group)| group.block.is_file() || group.size < size)
             .next()
             .map(|(index, _)| index)
     }
@@ -188,17 +188,11 @@ impl Partition for Part2 {
         let mut lim = self.groups.len() - 1;
 
         while let Some(unsorted) = self.unsorted(lim) {
-            println!("lim: {}, unsorted: {}", lim, unsorted);
-
-            self.draw();
-
-            match self.free(self.groups[unsorted].size, lim) {
+            match self.free(self.groups[unsorted].size, unsorted) {
                 Some(free) => {
-                    println!("free: {}", free);
+                    println!("free: {:?}, free_idx: {}, unsorted: {:?}", self.groups[free], free, self.groups[unsorted]);
 
                     self.groups.swap(free, unsorted);
-
-                    self.draw();
 
                     let free_group = self.groups[unsorted].clone();
                     let unsorted_group = self.groups[free].clone();
@@ -207,63 +201,20 @@ impl Partition for Part2 {
                     if free_group.size > unsorted_group.size {
                         self.groups.insert(free + 1, Group::new(Block::Free, free_group.size - unsorted_group.size));
 
-                        if let Some(g) = self.groups.get_mut(unsorted + 1) {
-                            g.size -= free_group.size - unsorted_group.size;
-                        }
+                        self.groups[unsorted + 1].size -= free_group.size - unsorted_group.size;
                     }
-
-                    self.draw();
 
                     lim = self.groups.len() - 1;
                 },
-                None => lim -= 1,
+                None => {
+                    if lim > 0 {
+                        lim -= 1
+                    } else {
+                        break;
+                    }
+                },
             }
         }
-
-
-        println!("done: {}", lim);
-
-        /*
-        'outer: while let Some(mut unsorted) = self.unsorted() {
-            let hash = self.map()
-                .iter()
-                .enumerate()
-                .fold(0, |acc, (index, block)| {
-                    match block {
-                        Block::File { id } => acc + (*id * index),
-                        Block::Free => acc,
-                    }
-                });
-
-            println!("hash: {}", hash);
-
-            unsorted.sort_by(|(_, a), (_, b)| b.block.id().cmp(&a.block.id()));
-
-            for (unsorted_index, unsorted_group) in unsorted {
-                // TODO: we will have to not recalculate free everytime, its better to just remove
-                // from free when we find
-                for (free_index, free_group) in self.free(unsorted_index) {
-                    if free_group.size == unsorted_group.size {
-                        self.groups.swap(free_index, unsorted_index);
-
-                        continue 'outer;
-                    } else if free_group.size > unsorted_group.size {
-                        self.groups.swap(free_index, unsorted_index);
-
-                        self.groups.insert(free_index + 1, Group::new(Block::Free, free_group.size - unsorted_group.size));
-
-                        if let Some(g) = self.groups.get_mut(unsorted_index + 1) {
-                            g.size -= free_group.size - unsorted_group.size;
-                        }
-
-                        continue 'outer;
-                    }
-                }
-            }
-
-            break 'outer;
-        }
-        */
     }
 
     fn map(&self) -> Vec<Block> {
@@ -275,7 +226,7 @@ impl Partition for Part2 {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut part1 = Part1::new("test.txt")?;
+    let mut part1 = Part1::new("input.txt")?;
 
     // println!("part1: {:?}", part1.calculate());
 
