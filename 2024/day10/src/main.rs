@@ -121,12 +121,56 @@ impl Part1 {
     }
 }
 
+pub struct Part2 {
+    map: Vec<Vec<i32>>,
+    heads: Vec<Position>,
+}
+
+impl From<Part1> for Part2 {
+    fn from(part1: Part1) -> Part2 {
+        Part2 {
+            map: part1.map,
+            heads: part1.heads,
+        }
+    }
+}
+
+impl Part2 {
+    fn query(&self, position: Position) -> i32 {
+        self.map[position.y][position.x]
+    }
+
+    fn rate(&self, position: Position) -> usize {
+        if self.map[position.y][position.x] == 9 {
+            return 1;
+        } else {
+            let height = self.map.len();
+            let width = self.map[0].len();
+
+            DIRECTIONS.iter()
+                .filter_map(|direction| {
+                    direction.mov(position, width, height).and_then(|new| {
+                        (self.query(new) - self.query(position) == 1).then(|| self.rate(new))
+                    })
+                })
+                .fold(0, |acc, x| acc + x)
+        }
+    }
+
+    pub fn calculate(&self) -> usize {
+        self.heads.iter()
+            .fold(0, |acc, position| acc + self.rate(*position))
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let part1 = Part1::new("input.txt")?;
 
     println!("part1: {:?}", part1.calculate());
 
-    // TODO: finish part2
+    let part2 = Part2::from(part1);
+
+    println!("part2: {:?}", part2.calculate());
 
     Ok(())
 }
